@@ -18,7 +18,6 @@ class MerkleLeavesToRoot(Encodium):
         assert len(self.leaves) > 0
 
     def update(self):
-
         if len(self.leaves) == 0:
             self.root = 0
         else:

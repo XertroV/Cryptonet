@@ -112,13 +112,12 @@ class SeekNBuild:
                     oldest_timestamp, oldest_block_hash = self.present_queue.get_nowait()
                     while oldest_timestamp + 10 < time.time():  # requested >10s ago
                         if oldest_block_hash in self.present:
-                            if self.chain.has_block_hash(oldest_block_hash) == False:
+                            if not self.chain.has_block_hash(oldest_block_hash):
                                 debug('seeker, block re-request: %064x' % oldest_block_hash)
                                 requesting.append(oldest_block_hash)
                             else:
-                                with self.present_lock:
-                                    if oldest_block_hash in self.present:
-                                        self.present.remove(oldest_block_hash)
+                                if oldest_block_hash in self.present:
+                                    self.present.remove(oldest_block_hash)
 
                         oldest_timestamp, oldest_block_hash = self.present_queue.get_nowait()
                     self.present_queue.put((oldest_timestamp, oldest_block_hash))
@@ -144,7 +143,8 @@ class SeekNBuild:
 
             if requesting.len() > 0:
                 # TODO : don't broadcast to all nodes, just one
-                self.p2p.broadcast('request_blocks', requesting.serialize())
+                print(requesting.serialize())
+                self.p2p.broadcast(b'request_blocks', requesting.serialize())
                 # Borked in spore since asyncio
                 '''some_peer = self.p2p.random_peer()
                 while True:
@@ -163,7 +163,7 @@ class SeekNBuild:
         return self._funcs['height']()
 
     def broadcast_block(self, to_send):
-        self.p2p.broadcast('blocks', to_send.serialize())
+        self.p2p.broadcast(b'blocks', to_send.serialize())
 
     def add_block(self, block):
         '''

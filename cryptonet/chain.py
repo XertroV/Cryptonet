@@ -6,15 +6,17 @@ import cryptonet.standard
 
 
 class PriorityQueueWithInvalidChecks(PriorityQueue):
+    ''' This holds blocks according to
+    '''
 
     def __init__(self, max_size=0):
         self.invalid_set = set()
         PriorityQueue.__init__(self, max_size)
 
-    def get(self, block=True, timeout=None):
-        potential_get = PriorityQueue.get(self, block, timeout)
+    def get(self, blocking=True, timeout=None):
+        potential_get = PriorityQueue.get(self, blocking, timeout)  # access original get method, not this one (self.get)
         if potential_get in self.invalid_set:
-            return self.get(block, timeout)
+            return self.get(blocking, timeout)
         return potential_get
 
     def add_to_invalid_set(self, to_make_invalid):
@@ -61,7 +63,7 @@ class Chain(object):
         self.block_hashes_with_priority = PriorityQueueWithInvalidChecks()  # inverse_priority, block_hash
 
         self.genesis_block = None
-        if genesis_block != None:
+        if genesis_block is not None:
             self.set_genesis(genesis_block)
 
         self.seek_n_build = None
@@ -72,7 +74,7 @@ class Chain(object):
     def get_block(self, block_hash):
         if block_hash == 0:
             return None
-        return self.db.get_entry(block_hash)
+        return self._Block.deserialize(self.db.get_entry(block_hash))
 
     def has_block(self, block):
         return block in self.blocks

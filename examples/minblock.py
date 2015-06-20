@@ -20,7 +20,8 @@ class MinBlock(encodium.Encodium):
     height = encodium.Integer.Definition(length=4, default=0)
     nonce = encodium.Integer.Definition(length=1, default=0)
 
-    def init(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
         self.priority = self.height
         
     def __hash__(self):
@@ -43,17 +44,13 @@ class MinBlock(encodium.Encodium):
             assert self.parent_hash == 0
         
     def to_bytes(self):
-        return b''.join([
-            self.parent_hash.to_bytes(32, 'big'),
-            self.height.to_bytes(4, 'big'),
-            self.nonce.to_bytes(1, 'big'),
-        ])
+        return self.to_bencode()
         
     def get_hash(self):
         return global_hash(self.to_bytes())
         
     def get_candidate(self, chain):
-        return MinBlock.make(parent_hash=self.get_hash(), height=self.height+1)
+        return MinBlock(parent_hash=self.get_hash(), height=self.height+1)
         
     def increment_nonce(self):
         self.nonce += 1

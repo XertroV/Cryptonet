@@ -20,6 +20,7 @@ class Miner:
 
     def shutdown(self):
         self._shutdown = True
+        debug('miner: shutdown called')
         for t in self.threads:
             t.join()
 
@@ -32,12 +33,12 @@ class Miner:
             self._restart = False
             # TODO: remove this sleep
             time.sleep(2)
-            if provided_block == None:
+            if provided_block is None:
                 block = self.chain.head.get_candidate(self.chain)
             else:
                 block = provided_block
             count = 0
-            debug('miner restarting')
+            debug('miner (re)starting', block.serialize(), self._shutdown, self._restart)
             while not self._shutdown and not self._restart:
                 count += 1
                 block.increment_nonce()
@@ -58,7 +59,8 @@ class Miner:
             debug('Miner: Found Soln : %064x' % block.get_hash())
             if block.height == 0:  # print genesis
                 debug('Miner: ser\'d block: ', block.serialize())
-                break
+                break  # break and let chain restart miner
             self.seek_n_build.add_block(block)
             while not self._restart and not self._shutdown:
                 time.sleep(0.01)
+        print('miner: ended loop')

@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
 
-import encodium
+import argparse
+
+from encodium import Encodium, Integer
 
 from cryptonet import Cryptonet
 from cryptonet.miner import Miner
-from cryptonet.datastructs import ChainVars
 from cryptonet.utilities import global_hash
 from cryptonet.errors import ValidationError
-from cryptonet.debug import debug, print_traceback
+from cryptonet.debug import debug, print_traceback, enable_debug
 from cryptonet.statemaker import StateMaker
 from cryptonet.dapp import Dapp
 from cryptonet.datastructs import MerkleLeavesToRoot
 from cryptonet.rpcserver import RPCServer
 
-chain_vars = ChainVars()
 
-chain_vars.seeds = []
-chain_vars.genesis_binary = b'\x01\x01\x00\x01\x00\x01\x01 h\x17\x0b\xf1\xa6$p\xde\xfen\x81\x8d\xablbf\x93\xc0\x96\xd2Qy\x02\x00\x19\xd7\xa7\xb2\x01\x14\xd23\x01\x00'
-chain_vars.mine = True
-chain_vars.address = ('',0)
+parser = argparse.ArgumentParser()
+parser.add_argument('-port', type=int, help='port to run p2p client on', default=32000)
+parser.add_argument('-rpc-port', type=int, help='port to run RCP client on', default=32550)
+args = parser.parse_args()
 
-min_net = Cryptonet(chain_vars)
 
-@min_net.block
-class MinBlockWithState(encodium.Field):
+class MinBlockWithState(Encodium):
     ''' Minimum specification needed for functional Chain.
     See cryptonet.skeleton for unencumbered examples.
     '''
+    parent_hash = Integer.Definition(length=32)
+    height = Integer.Definition(length=4, default=0)
+    nonce = Integer.Definition(length=1, default=0)
+    state_root = Integer.Definition(length=32, default=0)
+    tx_root = Integer.Definition(length=32, default=0)
 
-    def fields():
-        parent_hash = encodium.Integer(length=32)
-        height = encodium.Integer(length=4, default=0)
-        nonce = encodium.Integer(length=1, default=0)
-        state_root = encodium.Integer(length=32, default=0)
-        tx_root = encodium.Integer(length=32, default=0)
-
-    def init(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
         self.priority = self.height
         self.state_maker = None
         self.super_state = None
@@ -59,13 +56,7 @@ class MinBlockWithState(encodium.Field):
             self.assert_true(self.parent_hash == 0, 'Genesis req.: parent_hash must be zeroed')
         
     def to_bytes(self):
-        return b''.join([
-            self.parent_hash.to_bytes(32, 'big'),
-            self.height.to_bytes(4, 'big'),
-            self.nonce.to_bytes(1, 'big'),
-            self.state_root.to_bytes(32, 'big'),
-            self.tx_root.to_bytes(32, 'big')
-        ])
+        return self.to_bencode()
         
     def get_hash(self):
         return global_hash(self.to_bytes())
@@ -76,7 +67,7 @@ class MinBlockWithState(encodium.Field):
 
     def get_pre_candidate(self, chain):
         # fill in basic info here, state_root and tx_root will come later
-        candidate = chain._Block.make(parent_hash=self.get_hash(), height=self.height+1)
+        candidate = chain._Block(parent_hash=self.get_hash(), height=self.height+1)
         return candidate
 
     def increment_nonce(self):
@@ -89,6 +80,9 @@ class MinBlockWithState(encodium.Field):
         if other == None:
             return True
         return self.height > other.height
+
+    def related_blocks(self):
+        return [(self.height - 1, self.parent_hash)]
 
     def reorganisation(self, chain, from_block, around_block, to_block, is_test=False):
         ''' self.reorganisation() should be called only on the current head, where to_block is
@@ -157,10 +151,10 @@ class MinBlockWithState(encodium.Field):
 
     def update_roots(self):
         self.state_root = self.state_maker.super_state.get_hash()
-        self.tx_root = MerkleLeavesToRoot.make(leaves=self.super_txs).get_hash()
+        self.tx_root = MerkleLeavesToRoot(leaves=self.super_txs).get_hash()
 
     def setup_rpc(self):
-        self.rpc = RPCServer(port=32550)
+        self.rpc = RPCServer(port=args.rpc_port)
 
         @self.rpc.add_method
         def getinfo(*args):
@@ -173,14 +167,23 @@ class MinBlockWithState(encodium.Field):
 
         self.rpc.run()
 
+    @classmethod
+    def get_unmined_genesis(cls):
+        return cls(parent_hash=0, height=0, nonce=0, state_root=0, tx_root=0)
+
+min_net = Cryptonet([('127.0.0.1', 32000)], ('127.0.0.1', args.port), block_class=MinBlockWithState, mine=True)
+
+enable_debug()
+
 def make_genesis():
-    genesis_block = MinBlockWithState.make(parent_hash=0,height=0)
-    genesis_block._set_state_maker(StateMaker(min_net.chain, MinBlockWithState))
-    genesis_block.update_state_root()
-    miner = Miner(min_net.chain, min_net.seek_n_build)
-    miner.mine(genesis_block)
-    debug('Genesis Block: ', genesis_block.serialize())
+    # genesis_block = MinBlockWithState.make(parent_hash=0,height=0)
+    # genesis_block._set_state_maker(StateMaker(min_net.chain, MinBlockWithState))
+    # genesis_block.update_roots()
+    # miner = Miner(min_net.chain, min_net.seek_n_build)
+    # miner.mine(genesis_block)
+    # debug('Genesis Block: ', genesis_block.serialize())
+    pass
 
 if __name__ == "__main__":
-    #make_genesis()
+    make_genesis()
     min_net.run()
