@@ -184,7 +184,8 @@ class StateMaker(object):
         debug('StateMaker.reorg: around_block.get_hash(): %064x' % around_block.get_hash())
         around_state_height = self.find_prune_point(around_block.height)
         debug('StateMaker.reorganisation: around_state_height: %d' % around_state_height)
-        chain_path_to_trial = chain.construct_chain_path(around_block.get_hash(), to_block.get_hash())
+        chain_path_to_trial = chain.construct_chain_path(chain.block_height_to_hash[around_state_height], to_block.get_hash())
+
         if is_test:
             success = self.trial_chain_path_non_permanent(around_state_height, chain_path_to_trial)
         else:

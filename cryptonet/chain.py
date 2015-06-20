@@ -112,6 +112,7 @@ class Chain(object):
             block.on_genesis(self)
             block.assert_validity(self)
             self.genesis_block = block
+            self.block_height_to_hash[0] = block.get_hash()
             self.add_block(block)  # must add_block first so state_maker can deal with the reorg and find the block
             self.initialized = True
         else:
