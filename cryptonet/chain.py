@@ -134,7 +134,7 @@ class Chain(object):
         else:
             debug('chain: set_head failed: #%d, H: %064x' % (new_head.height, new_head.get_hash()))
 
-    def add_block(self, block):
+    def add_block(self, block, skip_db=False):
         ''' returns True on success
         '''
         if self.has_block(block):
@@ -144,8 +144,9 @@ class Chain(object):
             self.invalid_block_hashes.add(block.get_hash())
             return
 
-        self.db.set_entry(block.get_hash(), block)
-        self.db.set_ancestors(block)
+        if not skip_db:
+            self.db.set_entry(block.get_hash(), block)
+            self.db.set_ancestors(block)
         self.blocks.add(block)
         self.block_hashes.add(block.get_hash())
         self.block_hashes_with_priority.put((1 / (1 + block.priority), block.get_hash()))
@@ -161,7 +162,15 @@ class Chain(object):
 
     def load_chain(self):
         # TODO : load chainstate from database
-        pass
+        get_children_of = Queue()
+        get_children_of.put_nowait(self.genesis_block.get_hash())
+        while not get_children_of.empty():
+            next_hash = get_children_of.get_nowait()
+            children = set(self.get_children(next_hash))
+            for child_hash in children:
+                block = self.get_block(child_hash)
+                self.add_block(block, skip_db=True)
+                get_children_of.put_nowait(block.get_hash())
 
     def learn_of_db(self, db):
         self.db = db
@@ -254,11 +263,11 @@ class Chain(object):
         # self._make_head_not_invalid()
         #self._construct_best_chain()
 
-    def get_children(self, invalid_block_hash):
+    def get_children(self, block_hash):
         ''' Find any children of block with hash invalid_block_hash.
         Returns a list.
         '''
-        return self.db.get_children(invalid_block_hash)
+        return self.db.get_children(block_hash)
 
     """def _make_head_not_invalid(self):
         ''' If the head is invalid, set the head to head.parent until the head is valid.

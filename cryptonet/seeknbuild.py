@@ -63,28 +63,30 @@ class SeekNBuild:
     def seek_hash_now(self, block_hash):
         ''' Add block_hash to queue with priority -1 (will be pulled next).
         '''
-        @asyncio.coroutine
-        def do(block_hash):
-            if block_hash == 0:
-                return
-            if block_hash not in self.all:
-                self.future_queue.put_nowait((-1, block_hash))
-                self.future.add(block_hash)
-                self.all.add(block_hash)
-        asyncio.async(do(block_hash), loop=self._loop)
+        asyncio.async(self._seek_hash_now(block_hash), loop=self._loop)
+
+    @asyncio.coroutine
+    def _seek_hash_now(self, block_hash):
+        if block_hash == 0:
+            return
+        if block_hash not in self.all:
+            self.future_queue.put_nowait((-1, block_hash))
+            self.future.add(block_hash)
+            self.all.add(block_hash)
 
     def seek_with_priority(self, block_hash_with_height):
         ''' Add block_hash to future queue with its priority.
         '''
-        @asyncio.coroutine
-        def do(block_hash_with_height):
-            height, block_hash = block_hash_with_height
-            if block_hash == 0: return
-            if block_hash not in self.all:
-                self.all.add(block_hash)
-                self.future_queue.put_nowait((height, block_hash))
-                self.future.add(block_hash)
-        asyncio.async(do(block_hash_with_height), loop=self._loop)
+        asyncio.async(self._seek_with_priority(block_hash_with_height), loop=self._loop)
+
+    @asyncio.coroutine
+    def _seek_with_priority(self, block_hash_with_height):
+        height, block_hash = block_hash_with_height
+        if block_hash == 0: return
+        if block_hash not in self.all:
+            self.all.add(block_hash)
+            self.future_queue.put_nowait((height, block_hash))
+            self.future.add(block_hash)
 
     def seek_many_with_priority(self, block_hashes_with_height):
         ''' Applies each in list to seek_with_priority()
@@ -161,27 +163,28 @@ class SeekNBuild:
     def broadcast_block(self, to_send):
         self.p2p.broadcast(b'blocks', to_send.serialize())
 
+    @asyncio.coroutine
+    def _add_block(self, block):
+        block_hash = block.get_hash()
+        if block_hash in self.past or block_hash in self.done:
+            return
+        debug('SNB: Add Block %s' % block_hash)
+
+        to_put = (block.height, self.nonces.get_next(), block)
+        self.past.add(block_hash)
+        self.past_queue.put_nowait(to_put)
+
+        self.all.add(block_hash)
+
+        if block_hash in self.present:
+            self.present.remove(block_hash)
+
     def add_block(self, block):
         '''
         Add a block to the past_queue (ready for chain_builder) if we haven't done so before.
         '''
         # blocks should be internally consistent at this point
-        @asyncio.coroutine
-        def _add_block(block):
-            block_hash = block.get_hash()
-            if block_hash in self.past or block_hash in self.done:
-                return
-            debug('SNB: Add Block %s' % block_hash)
-
-            to_put = (block.height, self.nonces.get_next(), block)
-            self.past.add(block_hash)
-            self.past_queue.put_nowait(to_put)
-
-            self.all.add(block_hash)
-
-            if block_hash in self.present:
-                self.present.remove(block_hash)
-        asyncio.async(_add_block(block), loop=self._loop)
+        asyncio.async(self._add_block(block), loop=self._loop)
 
     @asyncio.coroutine
     def chain_builder(self):
@@ -199,7 +202,8 @@ class SeekNBuild:
         while not self._shutdown:
             height, nonce, block = yield from self.past_queue.get()
 
-            debug('Chain Builder:', height, nonce, block, self.chain.head)
+            if self.nonces.get_next() % 5 == 0:
+                debug('Chain Builder:', height, nonce, block, self.chain.head)
 
             if block.height == 0:
                 self.past.remove(block.get_hash())

@@ -303,7 +303,7 @@ class SuperState(object):
         return self.state_dict[key]
 
     def register_dapp(self, name, state):
-        debug('SuperState.register_dapp: name, state: %s, %s' % (name, state))
+        # debug('SuperState.register_dapp: name, state: %s, %s' % (name, state))
         self.state_dict[name] = state
 
     def get_hash(self):
@@ -314,6 +314,5 @@ class SuperState(object):
         for n in names:
             leaves.extend([global_hash(n), self.state_dict[n].get_hash()])
         merkle_root = MerkleLeavesToRoot(leaves=leaves)
-        debug('SuperState: root: ', merkle_root.get_hash(), [self.state_dict[n].complete_kvs() for n in names])
         return merkle_root.get_hash()
 

@@ -168,7 +168,6 @@ class StateDelta(object):
         if self.my_hash == None:
             #debug('StateDelta.get_hash, complete_kvs', self.complete_kvs())
             keys = list(self.all_keys())
-            debug('StateDelta: get_hash: keys', keys)
             # TODO: keys.sort() definition unknown ATM, needs to be specific so
             # identical states generate identical hashes (ints and bytes may be
             # being used as keys, not checked currently).
@@ -184,7 +183,7 @@ class StateDelta(object):
         return self.my_hash
 
     def ancestors(self):
-        if self.parent == None:
+        if self.parent is None:
             return [self]
         return [self] + self.parent.ancestors()
 
@@ -200,16 +199,16 @@ class StateDelta(object):
 
     def harden(self, new_child, heights_to_keep=None):
         ''' Merge any state deltas that can be merged and set child. '''
-        if heights_to_keep == None:
+        if heights_to_keep is None:
             heights_to_keep = self.gen_checkpoint_heights(self.height + 1)
 
-        if new_child != None:
+        if new_child is not None:
             self.child = new_child
             new_child.parent = self
         if self.height not in heights_to_keep:
             self.merge_with_child()
             self.parent.harden(self.child, heights_to_keep)
-        elif self.parent != None:
+        elif self.parent is not None:
             self.parent.harden(self, heights_to_keep)
 
     def last_checkpoint(self):

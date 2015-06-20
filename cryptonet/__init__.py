@@ -61,6 +61,7 @@ class Cryptonet(object):
             self.miner.mine(provided_block=self.genesis)
 
         self.chain.set_genesis(self.genesis)
+        self.chain.load_chain()
 
     def run(self):
         if self.mine: self.miner.run()
@@ -112,7 +113,7 @@ class Cryptonet(object):
                 debug('intro_handler: their top_block %064x' % their_intro.top_block)
                 #self.seek_n_build.seek_hash_now(their_intro.top_block)
             if their_intro.top_height > self.chain.head.height:
-                node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height, their_intro.top_height + 1))))
+                node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height + 1, their_intro.top_height + 1))))
 
 
         @self.p2p.on_message(b'blocks', BytesList.deserialize)

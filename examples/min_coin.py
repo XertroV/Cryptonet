@@ -29,13 +29,13 @@ cryptonet.standard.Block.GENESIS = cryptonet.standard.Block(
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-mine', action='store_true', default=False, help='mine blocks, include flag to engage')
-parser.add_argument('-add_nodes', nargs='*', default=[], type=str,
+parser.add_argument('-add-nodes', nargs='*', default=[], type=str,
                     help='node to connect to non-exclusively. Format xx.xx.xx.xx:yyyy')
 # parser.add_argument('-genesis', nargs=1, default=[GENESIS], type=str, help='bytes of genesis block if needed')
-parser.add_argument('-network_debug', action='store_true', default=False)
+parser.add_argument('-network-debug', action='store_true', default=False)
 parser.add_argument('-debug', action='store_true', default=False)
 parser.add_argument('-port', nargs=1, default=[32555], type=int, help='port for node to bind to')
-parser.add_argument('-rpc_port', nargs=1, default=[12345], type=int, help='port for rpc server to bind to')
+parser.add_argument('-rpc-port', nargs=1, default=[12345], type=int, help='port for rpc server to bind to')
 args = parser.parse_args()
 
 if args.debug:

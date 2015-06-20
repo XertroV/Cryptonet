@@ -27,8 +27,8 @@ class MinBlockWithState(Encodium):
     See cryptonet.skeleton for unencumbered examples.
     '''
     parent_hash = Integer.Definition(length=32)
-    height = Integer.Definition(length=4, default=0)
-    nonce = Integer.Definition(length=2, default=0)
+    height = Integer.Definition(default=0)
+    nonce = Integer.Definition(default=0)
     state_root = Integer.Definition(length=32, default=0)
     tx_root = Integer.Definition(length=32, default=0)
 
@@ -43,8 +43,9 @@ class MinBlockWithState(Encodium):
         return self.get_hash()
     
     def assert_internal_consistency(self):
-        self.assert_true(self.parent_hash >= 0 and self.parent_hash < 2**256, 'Parent hash in valid range')
-        self.assert_true(self.nonce >= 0 and self.nonce < 256**2, 'Nonce within valid range')
+        self.assert_true(0 <= self.parent_hash < 2**256, 'Parent hash in valid range')
+        self.assert_true(0 <= self.nonce < 256**4, 'Nonce within valid range')
+        self.assert_true(self.valid_proof(), 'PoW must be okay (but not yet fully confirmed)')
     
     def assert_validity(self, chain):
         self.assert_internal_consistency()
@@ -75,10 +76,10 @@ class MinBlockWithState(Encodium):
         self.nonce += 1
 
     def valid_proof(self):
-        return self.get_hash() < 2**248
+        return self.get_hash() < 0x0002000000000000000000000000000000000000000000000000000000000000
         
     def better_than(self, other):
-        if other == None:
+        if other is None:
             return True
         return self.height > other.height
 
@@ -137,7 +138,6 @@ class MinBlockWithState(Encodium):
                     else:
                         self.state[block.height] = block.height
                     debug('Counter: on_block called.', self.state.key_value_store)
-                    self.state.recursively_print_state()
 
             def on_transaction(self, subtx, block, chain):
                 pass

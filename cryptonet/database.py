@@ -67,7 +67,7 @@ class Database:
 
     def rpush(self, key, val):
         try:
-            self.set_list(key, self.get_list(key) + [val])
+            self.set_list(key, list(set(self.get_list(key) + [val])))  # list(set()) is there to ensure uniqueness
         except KeyError:
             self.set_list(key, [val])
 
@@ -104,4 +104,6 @@ class Database:
     def get_children(self, block_hash):
         ''' block_hash + delta gives all blocks at (height of block_hash) + delta (provided delta is a power of 2)
         '''
-        return self.get_entry(block_hash + 1)
+        if self.key_exists(block_hash + 1):
+            return self.get_list(block_hash + 1)
+        return []

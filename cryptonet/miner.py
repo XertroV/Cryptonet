@@ -61,5 +61,5 @@ class Miner:
             self.seek_n_build.add_block(block)
             debug('Miner: submitted block')
             while not self._restart and not self._shutdown:
-                time.sleep(min(1, 0.001 * 2 ** block.height))
+                time.sleep(0.02)
         print('miner: ended loop')
