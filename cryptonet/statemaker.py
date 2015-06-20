@@ -109,7 +109,10 @@ class StateMaker(object):
 
     def apply_block(self, block, hard_checkpoint=True):
         debug('StateMaker.apply_block, heights:', block.height, self.dapps[ROOT_DAPP].state.height)
-        assert block.height == self.dapps[ROOT_DAPP].state.height
+        try:
+            assert block.height == self.dapps[ROOT_DAPP].state.height
+        except AssertionError as e:
+            import pdb; pdb.set_trace()
         self._block_events(block)
         block.assert_validity(self.chain)
         if block.height != 0:

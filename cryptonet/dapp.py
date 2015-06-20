@@ -143,7 +143,7 @@ class StateDelta(object):
             del self.key_value_store[key]
 
     def recursively_print_state(self):
-        debug('StateDelta: %05d, %s', (self.height, self.key_value_store))
+        debug('StateDelta: %05d, %s' % (self.height, self.key_value_store))
         if self.parent != None:
             self.parent.recursively_print_state()
 

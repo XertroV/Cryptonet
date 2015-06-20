@@ -121,7 +121,7 @@ class Chain(object):
         success = True
         if self.initialized:
             lca_of_head_and_new_head = self.find_lca(self.head.get_hash(), new_head.get_hash())
-            debug('set_head: lca: %064x, %s' % (lca_of_head_and_new_head.get_hash(), lca_of_head_and_new_head))
+            debug('set_head: lca: %064x' % lca_of_head_and_new_head.get_hash())
             # send blocks: from, around, to
             success = self.head.reorganisation(self, self.head, lca_of_head_and_new_head, new_head)
         else:
@@ -169,7 +169,8 @@ class Chain(object):
             children = set(self.get_children(next_hash))
             for child_hash in children:
                 block = self.get_block(child_hash)
-                self.seek_n_build.add_block(block)
+                self.seek_n_build.add_block(block)  # add to seeknbuild just to get preexisting heights
+                self.add_block(block, skip_db=True)  # this add_block does the real work -- allows proper loading of chain
                 get_children_of.put_nowait(block.get_hash())
 
     def learn_of_db(self, db):

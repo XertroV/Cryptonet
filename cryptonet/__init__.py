@@ -96,9 +96,18 @@ class Cryptonet(object):
             debug('intro_handler: the peer: ', node.address)
             if their_intro.top_block != 0 and not self.chain.has_block_hash(their_intro.top_block):
                 debug('intro_handler: their top_block %064x' % their_intro.top_block)
-                #self.seek_n_build.seek_hash_now(their_intro.top_block)
-            if their_intro.top_height > self.chain.head.height:
-                node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height + 1, their_intro.top_height + 1))))
+                self.seek_n_build.seek_hash_now(their_intro.top_block)
+
+            #@asyncio.coroutine
+            #def repeat_intro():
+            #    node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height + 1, their_intro.top_height + 1))))
+            #    yield from asyncio.sleep(30)#*60)
+            #    self._loop.run_until_complete(repeat_intro())
+
+            #if their_intro.top_height > self.chain.head.height:
+            #    self._loop.run_until_complete(repeat_intro())
+            node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height + 1, their_intro.top_height + 1))))
+
 
 
         @self.p2p.on_message(b'blocks', BytesList.deserialize)
@@ -109,6 +118,8 @@ class Cryptonet(object):
                 try:
                     potential_block = self._Block.deserialize(serialized_block)
                     potential_block.assert_internal_consistency()
+                    if self.chain.has_block_hash(potential_block.get_hash()):
+                        continue
                     debug('blocks_handler: accepting block of height %d' % potential_block.height)
                 except ValidationError as e:
                     debug('blocks_handler: serialized_block:', serialized_block)

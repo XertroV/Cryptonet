@@ -184,7 +184,7 @@ class SeekNBuild:
                 self.past_queue.put_nowait(tuple_hnb)
 
             if lowest_not_in_chain > my_height:
-                to_seek = list(range(my_height + 1, max(lowest_not_in_chain, max_height) + 1))
+                to_seek = list(range(my_height + 1, max(lowest_not_in_chain, max_height) + 50))
             else:
                 to_seek = list(range(my_height + 1, max_height + 1))
 
@@ -249,8 +249,7 @@ class SeekNBuild:
         while not self._shutdown:
             height, nonce, block = yield from self.past_queue.get()
 
-            if int(time.time()) % 10 == 0:
-                debug('Chain Builder:', height, nonce, block, self.chain.head)
+            debug('Chain Builder:', height, self.chain.head.height)
 
             if block.height == 0:
                 self.past.remove(block.get_hash())
@@ -265,7 +264,7 @@ class SeekNBuild:
                 #print('chain_builder: block.height %d' % block.height)
                 # try some of those which were parentless:
                 self.past_queue.put_nowait((height, nonce, block))
-                self.seek_hash_now(block.get_hash())
+                self.seek_hash_now(block.parent_hash)
                 yield from asyncio.sleep(0.05)
             else:
                 if self.chain.has_block(block_hash):
