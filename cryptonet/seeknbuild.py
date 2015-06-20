@@ -26,7 +26,7 @@ class SeekNBuild:
     See the block_seeker and chain_builder functions for more info.
     '''
 
-    def __init__(self, p2p, chain, event_loop=None):
+    def __init__(self, p2p, chain, loop=None):
         self.p2p = p2p
         self.chain = chain
         self.chain.learn_of_seek_n_build(self)
@@ -48,7 +48,7 @@ class SeekNBuild:
             'height': self.chain.get_height,
         }
 
-        self._loop = asyncio.new_event_loop() if event_loop is None else event_loop
+        self._loop = asyncio.new_event_loop() if loop is None else loop
         asyncio.async(self.block_seeker(), loop=self._loop)
         asyncio.async(self.block_reseeker(), loop=self._loop)
         asyncio.async(self.chain_builder(), loop=self._loop)
@@ -68,7 +68,7 @@ class SeekNBuild:
             if block_hash == 0:
                 return
             if block_hash not in self.all:
-                self.future_queue.put((-1, block_hash))
+                self.future_queue.put_nowait((-1, block_hash))
                 self.future.add(block_hash)
                 self.all.add(block_hash)
         asyncio.async(do(block_hash), loop=self._loop)
@@ -82,7 +82,7 @@ class SeekNBuild:
             if block_hash == 0: return
             if block_hash not in self.all:
                 self.all.add(block_hash)
-                self.future_queue.put((height, block_hash))
+                self.future_queue.put_nowait((height, block_hash))
                 self.future.add(block_hash)
         asyncio.async(do(block_hash_with_height), loop=self._loop)
 
@@ -150,10 +150,10 @@ class SeekNBuild:
 
             if requesting.len() > 0:
                 # TODO : don't broadcast to all nodes, just one
-                print(requesting.serialize())
+                debug('Requesting: ', requesting.serialize(), len(self.future))
                 self.p2p.broadcast(b'request_blocks', requesting.serialize())
             else:
-                yield from asyncio.sleep(0.1)
+                yield from asyncio.sleep(0.01)
 
     def get_chain_height(self):
         return self._funcs['height']()
@@ -169,10 +169,11 @@ class SeekNBuild:
         @asyncio.coroutine
         def _add_block(block):
             block_hash = block.get_hash()
-            to_put = (block.height, self.nonces.get_next(), block)
-
             if block_hash in self.past or block_hash in self.done:
                 return
+            debug('SNB: Add Block %s' % block_hash)
+
+            to_put = (block.height, self.nonces.get_next(), block)
             self.past.add(block_hash)
             self.past_queue.put_nowait(to_put)
 
@@ -198,6 +199,8 @@ class SeekNBuild:
         while not self._shutdown:
             height, nonce, block = yield from self.past_queue.get()
 
+            debug('Chain Builder:', height, nonce, block, self.chain.head)
+
             if block.height == 0:
                 self.past.remove(block.get_hash())
                 self.done.add(block.get_hash())
@@ -210,10 +213,10 @@ class SeekNBuild:
                 #print('chain_builder: chain height: %d' % self.get_chain_height())
                 #print('chain_builder: block.height %d' % block.height)
                 # try some of those which were parentless:
-                with self.past_lock:
-                    self.past_queue.put((height, nonce, block))
-                    while not self.past_queue_no_parent.empty():
-                        self.past_queue.put_nowait(self.past_queue_no_parent.get_nowait())
+                self.past_queue.put_nowait((height, nonce, block))
+                while not self.past_queue_no_parent.empty():
+                    self.past_queue.put_nowait(self.past_queue_no_parent.get_nowait())
+                self.seek_hash_now(block.get_hash())
                 yield from asyncio.sleep(0.05)
             else:
                 if self.chain.has_block(block_hash):

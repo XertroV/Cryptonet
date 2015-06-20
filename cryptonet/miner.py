@@ -31,8 +31,6 @@ class Miner:
         print(provided_block)
         while not self._shutdown:
             self._restart = False
-            # TODO: remove this sleep
-            time.sleep(2)
             if provided_block is None:
                 block = self.chain.head.get_candidate(self.chain)
             else:
@@ -61,6 +59,7 @@ class Miner:
                 debug('Miner: ser\'d block: ', block.serialize())
                 break  # break and let chain restart miner
             self.seek_n_build.add_block(block)
+            debug('Miner: submitted block')
             while not self._restart and not self._shutdown:
-                time.sleep(0.01)
+                time.sleep(min(1, 0.001 * 2 ** block.height))
         print('miner: ended loop')

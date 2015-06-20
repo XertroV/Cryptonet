@@ -1,4 +1,5 @@
 import time
+import asyncio
 
 from spore import Spore
 
@@ -7,7 +8,7 @@ from cryptonet.chain import Chain
 from cryptonet.utilities import global_hash
 from cryptonet.database import Database
 from cryptonet.errors import ValidationError
-from cryptonet.datastructs import Intro, BytesList, HashList
+from cryptonet.datastructs import Intro, BytesList, HashList, IntList
 from cryptonet.miner import Miner
 from cryptonet.debug import debug
 import cryptonet.standard
@@ -28,15 +29,17 @@ class FakeSpore(object):
 
 class Cryptonet(object):
     def __init__(self, seeds, address, block_class=cryptonet.standard.Block, mine=False, alert_pubkey_x=0, enable_p2p=True):
+        self._loop = asyncio.get_event_loop()
+
         if enable_p2p:
-            self.p2p = Spore(seeds=seeds, address=address)
+            self.p2p = Spore(seeds=seeds, address=address, loop=self._loop)
             self.set_handlers()
         else:
             self.p2p = FakeSpore()
 
         self.db = Database()
         self.chain = Chain(db=self.db)
-        self.seek_n_build = SeekNBuild(self.p2p, self.chain)
+        self.seek_n_build = SeekNBuild(self.p2p, self.chain, loop=self._loop)
         self.mine = mine
         self.miner = Miner(self.chain, self.seek_n_build)
 
@@ -94,7 +97,7 @@ class Cryptonet(object):
         @self.p2p.on_connect
         def on_connect_handler(node):
             debug('on_connect_handler')
-            my_intro = Intro(top_block=self.chain.head.get_hash())
+            my_intro = Intro(top_block=self.chain.head.get_hash(), top_height=self.chain.head.height)
             node.send(b'intro', my_intro)
 
 
@@ -107,14 +110,16 @@ class Cryptonet(object):
             debug('intro_handler: the peer: ', node.address)
             if their_intro.top_block != 0 and not self.chain.has_block_hash(their_intro.top_block):
                 debug('intro_handler: their top_block %064x' % their_intro.top_block)
-                self.seek_n_build.seek_hash_now(their_intro.top_block)
+                #self.seek_n_build.seek_hash_now(their_intro.top_block)
+            if their_intro.top_height > self.chain.head.height:
+                node.send(b'request_heights', IntList(contents=list(range(self.chain.head.height, their_intro.top_height + 1))))
 
 
         @self.p2p.on_message(b'blocks', BytesList.deserialize)
         def blocks_handler(node, block_list):
             if config['network_debug'] or True:
                 debug('MSG blocks : %064x' % block_list.get_hash())
-            for serialized_block in block_list:
+            for serialized_block in set(block_list.contents):
                 try:
                     potential_block = self._Block.deserialize(serialized_block)
                     potential_block.assert_internal_consistency()
@@ -133,10 +138,19 @@ class Cryptonet(object):
             if config['network_debug'] or True:
                 debug('MSG request_blocks : %064x' % requests.get_hash())
             blocks_to_send = BytesList()
-            for bh in requests:
+            for bh in set(requests.contents):
                 if self.chain.has_block_hash(bh):
                     blocks_to_send.append(self.chain.get_block(bh).serialize())
             if blocks_to_send.len() > 0:
                 node.send(b'blocks', blocks_to_send)
 
-                # done setting handlers
+        @self.p2p.on_message(b'request_heights', IntList.deserialize)
+        def request_block_heights_handler(node, requests):
+            blocks_to_send = BytesList()
+            for bh in set(requests.contents):
+                if self.chain.head.height >= bh:
+                    blocks_to_send.append(self.chain.get_block(self.chain.get_block_hash_by_height(bh)).serialize())
+            if blocks_to_send.len() > 0:
+                node.send(b'blocks', blocks_to_send)
+
+        # done setting handlers

@@ -18,6 +18,7 @@ from cryptonet.rpcserver import RPCServer
 parser = argparse.ArgumentParser()
 parser.add_argument('-port', type=int, help='port to run p2p client on', default=32000)
 parser.add_argument('-rpc-port', type=int, help='port to run RCP client on', default=32550)
+parser.add_argument('-mine', action='store_true', help='include this flag to mine')
 args = parser.parse_args()
 
 
@@ -27,7 +28,7 @@ class MinBlockWithState(Encodium):
     '''
     parent_hash = Integer.Definition(length=32)
     height = Integer.Definition(length=4, default=0)
-    nonce = Integer.Definition(length=1, default=0)
+    nonce = Integer.Definition(length=2, default=0)
     state_root = Integer.Definition(length=32, default=0)
     tx_root = Integer.Definition(length=32, default=0)
 
@@ -43,7 +44,7 @@ class MinBlockWithState(Encodium):
     
     def assert_internal_consistency(self):
         self.assert_true(self.parent_hash >= 0 and self.parent_hash < 2**256, 'Parent hash in valid range')
-        self.assert_true(self.nonce >= 0 and self.nonce < 256, 'Nonce within valid range')
+        self.assert_true(self.nonce >= 0 and self.nonce < 256**2, 'Nonce within valid range')
     
     def assert_validity(self, chain):
         self.assert_internal_consistency()
@@ -74,7 +75,7 @@ class MinBlockWithState(Encodium):
         self.nonce += 1
 
     def valid_proof(self):
-        return True
+        return self.get_hash() < 2**248
         
     def better_than(self, other):
         if other == None:
@@ -171,7 +172,7 @@ class MinBlockWithState(Encodium):
     def get_unmined_genesis(cls):
         return cls(parent_hash=0, height=0, nonce=0, state_root=0, tx_root=0)
 
-min_net = Cryptonet([('127.0.0.1', 32000)], ('127.0.0.1', args.port), block_class=MinBlockWithState, mine=True)
+min_net = Cryptonet([('127.0.0.1', 32000)], ('127.0.0.1', args.port), block_class=MinBlockWithState, mine=args.mine)
 
 enable_debug()
 
@@ -185,5 +186,4 @@ def make_genesis():
     pass
 
 if __name__ == "__main__":
-    make_genesis()
     min_net.run()

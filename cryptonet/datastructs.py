@@ -109,7 +109,7 @@ class ListFieldPrimative(Encodium):
 
 
 class IntList(ListFieldPrimative):
-    contents = List.Definition(Integer.Definition(), default=[])
+    contents = List.Definition(Integer.Definition(), default=lambda:[])
 
     def extend(self, item):
         self.contents.append(item)
@@ -140,7 +140,7 @@ class IntList(ListFieldPrimative):
 
 
 class HashList(IntList):
-    contents = List.Definition(Integer.Definition(length=32), default=[])
+    contents = List.Definition(Integer.Definition(length=32), default=lambda:[])
 
     def extend(self, item):
         self.contents.append(item)
@@ -165,7 +165,7 @@ class HashList(IntList):
 
 
 class BytesList(ListFieldPrimative):
-    contents = List.Definition(Bytes.Definition(), default=[])
+    contents = List.Definition(Bytes.Definition(), default=lambda:[])
 
     def extend(self, item):
         self.contents.append(item)
@@ -200,6 +200,7 @@ class Intro(Encodium):
     timestamp = Integer.Definition(default=1, width=5)
     user_agent = String.Definition(default='cryptonet/0.0.1/', max_length=32)
     top_block = Integer.Definition(length=32)
+    top_height = Integer.Definition(length=4)
     relay = Integer.Definition(default=0, length=1)
     hash_list = List.Definition(Bytes.Definition(length=32), default=[])
 

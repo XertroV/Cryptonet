@@ -61,6 +61,7 @@ class Chain(object):
         self.block_hashes = set()
         self.invalid_block_hashes = set()
         self.block_hashes_with_priority = PriorityQueueWithInvalidChecks()  # inverse_priority, block_hash
+        self.block_height_to_hash = {}
 
         self.genesis_block = None
         if genesis_block is not None:
@@ -75,6 +76,11 @@ class Chain(object):
         if block_hash == 0:
             return None
         return self._Block.deserialize(self.db.get_entry(block_hash))
+
+    def get_block_hash_by_height(self, height):
+        if self.head.height >= height:
+            return self.block_height_to_hash[height]
+        raise ChainError('Height %d does not exist yet' % height)
 
     def has_block(self, block):
         return block in self.blocks
@@ -122,7 +128,9 @@ class Chain(object):
             success = new_head.reorganisation(self, new_head, new_head, new_head)
         if success:
             self.head = new_head
-            debug('chain: new head %d, hash: %064x' % (new_head.height, new_head.get_hash()))
+            debug('chain: new head %d, hash: %064x' % (new_head.height,
+                                                       new_head.get_hash()))
+            self.block_height_to_hash[self.head.height] = self.head.get_hash()
         else:
             debug('chain: set_head failed: #%d, H: %064x' % (new_head.height, new_head.get_hash()))
 
