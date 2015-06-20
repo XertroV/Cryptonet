@@ -169,7 +169,7 @@ class Chain(object):
             children = set(self.get_children(next_hash))
             for child_hash in children:
                 block = self.get_block(child_hash)
-                self.add_block(block, skip_db=True)
+                self.seek_n_build.add_block(block)
                 get_children_of.put_nowait(block.get_hash())
 
     def learn_of_db(self, db):

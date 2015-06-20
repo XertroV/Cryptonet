@@ -39,7 +39,7 @@ class Cryptonet(object):
 
         self.db = Database()
         self.chain = Chain(db=self.db)
-        self.seek_n_build = SeekNBuild(self.p2p, self.chain, loop=self._loop)
+        self.seek_n_build = SeekNBuild(self.p2p, self.chain, self, loop=self._loop)
         self.mine = mine
         self.miner = Miner(self.chain, self.seek_n_build)
 
@@ -71,21 +71,6 @@ class Cryptonet(object):
 
     def shutdown(self):
         self.p2p.shutdown()
-
-    # =================
-    # Decorators
-    #=================
-
-    def block(self, block_object):
-        self._Block = block_object
-        self.chain._Block = block_object
-        if self.mine_genesis:
-            genesis_block = self._Block.get_unmined_genesis()
-            self.miner.mine(genesis_block)
-        else:
-            genesis_block = self._Block().make(self.genesis_binary)
-        self.chain.set_genesis(genesis_block)
-        return block_object
 
 
     #==================

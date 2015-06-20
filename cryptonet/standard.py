@@ -204,8 +204,7 @@ class Header(Encodium):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.parent_hash = self.previous_blocks[0]
-        self.previous_blocks_with_height = [(self.height - 2 ** i, self.previous_blocks[i]) for i in
-                                            range(len(self.previous_blocks))]
+        self.previous_blocks_with_height = [(self.height - 2 ** i, self.previous_blocks[i]) for i in range(len(self.previous_blocks))]
 
     def to_bytes(self):
         return b''.join([
