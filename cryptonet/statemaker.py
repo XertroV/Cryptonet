@@ -1,7 +1,7 @@
 from cryptonet.utilities import global_hash
 from cryptonet.dapp import Dapp, TxPrism, TxTracker
 from cryptonet.errors import ValidationError
-from cryptonet.dapp import StateDelta
+from cryptonet.dapp import StateDelta, TxPrism
 from cryptonet.debug import debug
 from cryptonet.datastructs import MerkleLeavesToRoot
 from cryptonet.constants import ROOT_DAPP, TX_TRACKER
@@ -76,7 +76,7 @@ class _DappHolder(object):
 
 
 class StateMaker(object):
-    def __init__(self, chain, is_future=False):
+    def __init__(self, chain, super_tx_class, is_future=False):
         self.dapps = _DappHolder()
         self.chain = chain
         self.most_recent_block = None
@@ -88,6 +88,7 @@ class StateMaker(object):
         self.future_state_maker = None
         self.future_block = None
         self._Block = chain._Block
+        self._SuperTxClass = super_tx_class
 
     def register_dapp(self, new_dapp):
         assert isinstance(new_dapp, Dapp)
@@ -109,10 +110,8 @@ class StateMaker(object):
 
     def apply_block(self, block, hard_checkpoint=True):
         debug('StateMaker.apply_block, heights:', block.height, self.dapps[ROOT_DAPP].state.height)
-        try:
-            assert block.height == self.dapps[ROOT_DAPP].state.height
-        except AssertionError as e:
-            import pdb; pdb.set_trace()
+        self.dapps[ROOT_DAPP].state.recursively_print_state()
+        assert block.height == self.dapps[ROOT_DAPP].state.height
         self._block_events(block)
         block.assert_validity(self.chain)
         if block.height != 0:
@@ -126,6 +125,23 @@ class StateMaker(object):
         self._add_super_txs(block.super_txs)
         block.update_roots()
 
+    def update_coinbase(self, pay_to):
+        self.future_block.remove_coinbase_transaction()
+        self.refresh_future_super_txs()
+        with self.future_state():
+            debug('Statemaker: update_coinbase, height', self.get_height(), self.future_block.height)
+            self._block_events(self.future_block)
+            max_coinbase_value = self.dapps[ROOT_DAPP].state[TxPrism.KNOWN_PUBKEY_X]
+            stx = self._SuperTxClass.create_coinbase(pay_to, max_coinbase_value)
+            self.future_block.add_super_tx(stx)
+            debug('Statemaker: future block', self.future_block)
+
+    def refresh_future_super_txs(self):
+        self.forget_future_state()
+        with self.future_state():
+            self._add_super_txs(self.future_block.super_txs)
+            self.future_block.update_roots()
+
     def apply_super_tx_to_future(self, super_tx):
         ''' This applies a transaction to future_block.
          The state will be updated and a new block available when pushed to the miner.
@@ -133,7 +149,7 @@ class StateMaker(object):
          '''
         with self.future_state():
             self._add_super_txs([super_tx])
-            self.future_block.super_txs.append(super_tx)
+            self.future_block.super_txs.append(super_tx) if super_tx not in self.future_block.super_txs else None
             self.future_block.update_roots()
 
     def _add_super_txs(self, list_of_super_txs):
@@ -185,6 +201,8 @@ class StateMaker(object):
         around_state_height = self.find_prune_point(around_block.height)
         debug('StateMaker.reorganisation: around_state_height: %d' % around_state_height)
         chain_path_to_trial = chain.construct_chain_path(chain.block_height_to_hash[around_state_height], to_block.get_hash())
+        if len(chain_path_to_trial) > 0:
+            chain_path_to_trial.pop(0)
 
         if is_test:
             success = self.trial_chain_path_non_permanent(around_state_height, chain_path_to_trial)
@@ -281,7 +299,7 @@ class StateMaker(object):
         return AltStateGateway(self, state_tag, from_height, amnesia=amnesia)
 
     def future_state(self):
-        return self._alt_state_gateway(b'future', self.get_height())
+        return self._alt_state_gateway(b'future', self.get_height() - 1)
 
     def forget_future_state(self):
         self.dapps.forget_alt(b'future')
@@ -315,8 +333,12 @@ class SuperState(object):
         names = list(self.state_dict.keys())
         # all names are bytes, need to investigate exactly how these are sorted.
         names.sort()
+        debug('SuperState: names', names)
         for n in names:
-            leaves.extend([global_hash(n), self.state_dict[n].get_hash()])
+            leaves.extend([global_hash(n), self.state_dict[n].get_hash()])  # h(name), h(state) pairs
+        debug('SuperState: leaves', leaves)
         merkle_root = MerkleLeavesToRoot(leaves=leaves)
+        debug('SuperState: MR', merkle_root.get_hash())
+        debug('SuperState: TX_TRACKER', self.state_dict[b'_TX_TRACKER'].recursively_print_state())
         return merkle_root.get_hash()
 

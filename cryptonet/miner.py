@@ -33,6 +33,7 @@ class Miner:
             self._restart = False
             if provided_block is None:
                 block = self.chain.head.get_candidate(self.chain)
+                block.update_roots()
             else:
                 block = provided_block
             count = 0
@@ -54,11 +55,11 @@ class Miner:
                 time.sleep(0.01)
                 print('miner -restarting')
                 continue
-            debug('Miner: Found Soln : %064x' % block.get_hash())
+            debug('Miner: Found Soln : %064x' % block.get_hash(), block.serialize())
             if block.height == 0:  # print genesis
-                debug('Miner: ser\'d block: ', block.serialize())
+                debug('Miner: ser\'d genesis block: ', block.serialize())
                 break  # break and let chain restart miner
-            self.seek_n_build.add_block(block)
+            self.seek_n_build.add_block(block.__class__.deserialize(block.serialize()))
             debug('Miner: submitted block')
             while not self._restart and not self._shutdown:
                 time.sleep(0.02)

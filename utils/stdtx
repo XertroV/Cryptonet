@@ -15,10 +15,10 @@ parser.add_argument('fee', nargs='?', default=0, type=int, help='fee (default 0)
 parser.add_argument('donation', nargs='?', default=0, type=int, help='donation (default 0)')
 args = parser.parse_args()
 
-stx = SuperTx.make(
-  txs=[Tx.make(
+stx = SuperTx(
+  txs=[Tx(
     dapp=b'', value=args.amount, fee=args.fee,
     donation=args.donation, data=[args.to_x.to_bytes(32, 'big')]
     )])
-stx.sign(args.secret_exponent)
-print(hexlify(stx.serialize()).decode())
+signed_tx = stx.sign(args.secret_exponent)
+print(hexlify(signed_tx.serialize()))

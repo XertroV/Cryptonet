@@ -143,7 +143,7 @@ class StateDelta(object):
             del self.key_value_store[key]
 
     def recursively_print_state(self):
-        debug('StateDelta: %05d, %s' % (self.height, self.key_value_store))
+        debug('StateDelta: %05d, %s' % (self.height, ["%x: %d" % (k,v) for k,v in self.key_value_store.items()]))
         if self.parent != None:
             self.parent.recursively_print_state()
 
@@ -192,6 +192,7 @@ class StateDelta(object):
         Some ancestors may be merged.
         Return a new StateDelta.
         '''
+        debug('StateDelta: checkpoint')
         new_state_delta = StateDelta(self, self.height + 1)
         if hard_checkpoint:
             self.harden(new_state_delta)
@@ -286,7 +287,7 @@ class TxPrism(Dapp):
     # Used for coinbase transactions and anonymous submissions of block headers
     KNOWN_SECRET_EXPONENT = 0x1
     KNOWN_PUBKEY_X = 55066263022277343669578718895168534326250603453777594175500187360389116729240
-    EUDEMONIA_PUBKEY_X = 0xABCDABCDABCD
+    EUDEMONIA_PUBKEY_X = 0x111222333
 
     def on_block(self, block, chain):
         ''' Coinbase can be dealt with as follows:
@@ -311,7 +312,7 @@ class TxPrism(Dapp):
         self.assert_true(tx.value >= 0, 'tx.value must be greater than or equal to 0')
         self.assert_true(tx.fee >= 0, 'tx.fee must be greater than or equal to 0')
         self.assert_true(tx.donation >= 0, 'tx.donation must be greater than or equal to 0')
-        debug('TxPrism.on_transaction', tx.sender)
+        debug('TxPrism.on_transaction', tx.sender, tx.value)
 
         self.assert_true(self.state[tx.sender.x] >= tx.value + tx.fee + tx.donation, 'sender must have enough funds')
 
@@ -329,6 +330,9 @@ class TxPrism(Dapp):
             self.state[tx.dapp] += tx.value
             self.state_maker.dapps[tx.dapp].on_transaction(tx, block, chain)
 
+        self.state.recursively_print_state()
+        debug('TxPrism.on_tx: super_state hash', self.super_state.get_hash())
+
 
 class TxTracker(Dapp):
     ''' Special dapp to track transactions.
@@ -339,4 +343,5 @@ class TxTracker(Dapp):
     def on_transaction(self, super_tx, block, chain):
         self.assert_true(self.state[super_tx.get_hash()] == 0, 'SuperTx must not have been used previously')
         self.state[super_tx.get_hash()] = block.height
+        debug('TxTracker: state[txhash]', self.state[super_tx.get_hash()], block, super_tx)
 

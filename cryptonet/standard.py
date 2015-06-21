@@ -129,13 +129,14 @@ class Point(Encodium):
 
 
 class SuperTx(Encodium):
-    sender = Point.Definition()
+    sender = Point.Definition(default=lambda:Point(**dict(zip(('x', 'y'), pycoin.ecdsa.public_pair_for_secret_exponent(pycoin.ecdsa.generator_secp256k1, 0x1)))))
     txs = List.Definition(Tx.Definition())
 
     def __init__(self, *args, **kwargs):
         self.txs_bytes = b''.join([tx.to_bytes() for tx in kwargs['txs']])
         super().__init__(*args, **kwargs)
         self._set_tx_sender()
+        self.coinbase = False
 
     def _set_tx_sender(self):
         for tx in self.txs:
@@ -160,7 +161,6 @@ class SuperTx(Encodium):
 
 
 class SignedSuperTx(SuperTx):
-
     signature = Bytes.Definition()
 
     def __init__(self, *args, **kwargs):
@@ -183,6 +183,14 @@ class SignedSuperTx(SuperTx):
             self.txs_bytes,
             self.signature
         ])
+
+    @classmethod
+    def create_coinbase(cls, pay_to, max_value):
+        stx = SuperTx(txs=[Tx(dapp=b'', value=max_value, fee=0, donation=0, data=[pay_to])])
+        signed_stx = stx.sign(0x1)
+        signed_stx.coinbase = True
+        return signed_stx
+
 
 class Header(Encodium):
     DEFAULT_TARGET = 2 ** 248
@@ -236,7 +244,7 @@ class Header(Encodium):
         '''
         self.assert_true(self.version == 1, 'version at 1')
         self.assert_true(self.timestamp <= int(time.time()) + 60 * 15, 'timestamp too far in future')
-        self.assert_true(self.valid_proof(), 'valid PoW required')
+        self.assert_true(self.valid_proof(), 'valid PoW required, currently %064x and serialized as %s' % (self.get_hash(), self.serialize()))
         self.assert_true(len(self.previous_blocks) < 30, 'reasonable number of prev_blocks')
 
     def assert_validity(self, chain):
@@ -338,6 +346,7 @@ class Block(Encodium):
         self.priority = self.height
         self.state_maker = None
         self.super_state = None
+        self.coinbase_set = False
 
     def __eq__(self, other):
         if isinstance(other, Block) and other.get_hash() == self.get_hash():
@@ -393,7 +402,6 @@ class Block(Encodium):
         * self.header.transaction_mr equals merkle root of self.super_txs
         * self.header.uncles_mr equals merkle root of self.uncles
         '''
-        self.header.assert_internal_consistency()
         for uncle in self.uncles:
             uncle.assert_internal_consistency()
         for super_tx in self.super_txs:
@@ -403,6 +411,10 @@ class Block(Encodium):
         self.assert_true(
             self.header.uncles_mr == MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.uncles]).get_hash(),
             'UnclesMR consistency')
+        try:
+            self.header.assert_internal_consistency()
+        except:
+            import pdb; pdb.set_trace()
 
     def assert_validity(self, chain):
         ''' self.assert_validity should validate the following:
@@ -435,7 +447,10 @@ class Block(Encodium):
         return Block(header=Header(), uncles=[], super_txs=[])
 
     def get_candidate(self, chain):
-        # todo : fix so state_root matches expected - should now be fixed?
+        self.state_maker.update_coinbase(b'Max')
+        if self.height != 0:
+            self.state_maker.future_block._set_state_maker(self.state_maker)
+            self.update_roots()
         return self.state_maker.future_block
 
     def get_pre_candidate(self, chain):
@@ -453,10 +468,7 @@ class Block(Encodium):
         debug('Block.on_genesis called')
         assert isinstance(chain, cryptonet.Chain)
         assert not chain.initialized
-        self._set_state_maker(StateMaker(chain))
-        # TxPrism is standard root dapp - allows for txs to be passed to contracts
-        #self.state_maker.register_dapp(TxPrism(ROOT_DAPP, self.state_maker))
-        #self.state_maker.register_dapp(TxTracker(TX_TRACKER, self.state_maker))
+        self._set_state_maker(StateMaker(chain, super_tx_class=SignedSuperTx))
 
     def _set_state_maker(self, state_maker):
         assert isinstance(state_maker, StateMaker)
@@ -465,7 +477,7 @@ class Block(Encodium):
         self.additional_state_operations(state_maker)
 
     def additional_state_operations(self, state_maker):
-        assert isinstance(state_maker, StateMaker)
+        self.update_roots()
 
     def update_roots(self):
         if self.height != 0:
@@ -474,8 +486,16 @@ class Block(Encodium):
             self.header.transaction_mr = MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.super_txs]).get_hash()
 
     def add_super_tx(self, super_tx):
+        #assert self.state_maker.get_height() < self.height  # only add txs to future blocks
+        debug('Adding stx:', super_tx)
+        if super_tx.coinbase:
+            self.remove_coinbase_transaction()
         self.super_txs.append(super_tx)
-        self.state_maker.ap
+        self.state_maker.apply_super_tx_to_future(super_tx)
+        self.update_roots()
+
+    def remove_coinbase_transaction(self):
+        self.super_txs = [stx for stx in self.super_txs if not stx.coinbase]
 
 
 class RCPHandler:
