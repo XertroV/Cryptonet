@@ -33,7 +33,8 @@ class Miner:
             self._restart = False
             if provided_block is None:
                 block = self.chain.head.get_candidate(self.chain)
-                block.update_roots()
+                if hasattr(block, 'update_roots'):
+                    block.update_roots()
             else:
                 block = provided_block
             count = 0

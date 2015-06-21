@@ -76,7 +76,7 @@ class _DappHolder(object):
 
 
 class StateMaker(object):
-    def __init__(self, chain, super_tx_class, is_future=False):
+    def __init__(self, chain, super_tx_class=None, is_future=False):
         self.dapps = _DappHolder()
         self.chain = chain
         self.most_recent_block = None
@@ -122,7 +122,7 @@ class StateMaker(object):
         '''
         block._set_state_maker(self)
         self.dapps.on_block(block, self.chain)
-        self._add_super_txs(block.super_txs)
+        self._add_super_txs(block.super_txs, recent_block=block)
         block.update_roots()
 
     def update_coinbase(self, pay_to):
@@ -148,16 +148,17 @@ class StateMaker(object):
          - This is equivalent to adding the tx to the mem-pool
          '''
         with self.future_state():
-            self._add_super_txs([super_tx])
+            self._add_super_txs([super_tx], recent_block=self.future_block)
             self.future_block.super_txs.append(super_tx) if super_tx not in self.future_block.super_txs else None
             self.future_block.update_roots()
 
-    def _add_super_txs(self, list_of_super_txs):
+    def _add_super_txs(self, list_of_super_txs, recent_block=None):
         ''' Process a list of transactions, typically passes each to the ROOT_DAPP in sequence.
         '''
+        recent_block = self.most_recent_block if recent_block is None else recent_block
         try:
             for super_tx in list_of_super_txs:
-                self.dapps[TX_TRACKER].on_transaction(super_tx, self.most_recent_block, self.chain)
+                self.dapps[TX_TRACKER].on_transaction(super_tx, recent_block, self.chain)
                 for tx in super_tx.txs:
                     self._process_tx(tx)
         except AssertionError or ValidationError as e:
@@ -202,7 +203,7 @@ class StateMaker(object):
         debug('StateMaker.reorganisation: around_state_height: %d' % around_state_height)
         chain_path_to_trial = chain.construct_chain_path(chain.block_height_to_hash[around_state_height], to_block.get_hash())
         if len(chain_path_to_trial) > 0:
-            chain_path_to_trial.pop(0)
+            chain_path_to_trial.pop(0)  # this might not be needed actually
 
         if is_test:
             success = self.trial_chain_path_non_permanent(around_state_height, chain_path_to_trial)
@@ -339,6 +340,5 @@ class SuperState(object):
         debug('SuperState: leaves', leaves)
         merkle_root = MerkleLeavesToRoot(leaves=leaves)
         debug('SuperState: MR', merkle_root.get_hash())
-        debug('SuperState: TX_TRACKER', self.state_dict[b'_TX_TRACKER'].recursively_print_state())
         return merkle_root.get_hash()
 

@@ -58,6 +58,7 @@ class Chain(object):
         self.db = db
         self.miner = None
         self.blocks = set()
+        self.block_index = {}
         self.block_hashes = set()
         self.invalid_block_hashes = set()
         self.block_hashes_with_priority = PriorityQueueWithInvalidChecks()  # inverse_priority, block_hash
@@ -75,7 +76,8 @@ class Chain(object):
     def get_block(self, block_hash):
         if block_hash == 0:
             return None
-        return self._Block.deserialize(self.db.get_entry(block_hash))
+        return self.block_index[block_hash]
+        # return self._Block.deserialize(self.db.get_entry(block_hash))
 
     def get_block_hash_by_height(self, height):
         if self.head.height >= height:
@@ -121,7 +123,10 @@ class Chain(object):
     def set_head(self, new_head):
         success = True
         if self.initialized:
-            lca_of_head_and_new_head = self.find_lca(self.head.get_hash(), new_head.get_hash())
+            try:
+                lca_of_head_and_new_head = self.find_lca(self.head.get_hash(), new_head.get_hash())
+            except:
+                import pdb; pdb.set_trace()
             debug('set_head: lca: %064x' % lca_of_head_and_new_head.get_hash())
             # send blocks: from, around, to
             success = self.head.reorganisation(self, self.head, lca_of_head_and_new_head, new_head)
@@ -149,8 +154,11 @@ class Chain(object):
             self.db.set_entry(block.get_hash(), block)
             self.db.set_ancestors(block)
         self.blocks.add(block)
+        self.block_index[block.get_hash()] = block
         self.block_hashes.add(block.get_hash())
         self.block_hashes_with_priority.put((1 / (1 + block.priority), block.get_hash()))
+
+        block.assert_validity(self)
 
         if block.better_than(self.head):
             self.set_head(block)
@@ -184,6 +192,7 @@ class Chain(object):
         Currently walks through each blocks parents in turn until a match is found and returns that match.
         '''
         mutual_history = set()
+        debug('Chain.find_lca', block_hash_a, block_hash_b)
         blocks = [self.get_block(block_hash_a), self.get_block(block_hash_b)]
         while True:
             if blocks[0].get_hash() == blocks[1].get_hash():

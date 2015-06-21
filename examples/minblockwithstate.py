@@ -50,6 +50,7 @@ class MinBlockWithState(Encodium):
     def assert_validity(self, chain):
         self.assert_internal_consistency()
         if chain.initialized:
+            self._set_state_maker(chain.head.state_maker)
             self.assert_true(chain.has_block_hash(self.parent_hash), 'Parent unknown')
             self.assert_true(chain.get_block(self.parent_hash).height + 1 == self.height, 'Height requirement')
             self.assert_true(self.super_state.get_hash() == self.state_root, 'State root must match expected')

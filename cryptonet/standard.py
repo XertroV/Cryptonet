@@ -129,67 +129,52 @@ class Point(Encodium):
 
 
 class SuperTx(Encodium):
-    sender = Point.Definition(default=lambda:Point(**dict(zip(('x', 'y'), pycoin.ecdsa.public_pair_for_secret_exponent(pycoin.ecdsa.generator_secp256k1, 0x1)))))
     txs = List.Definition(Tx.Definition())
+    signature = Signature.Definition()
 
     def __init__(self, *args, **kwargs):
-        self.txs_bytes = b''.join([tx.to_bytes() for tx in kwargs['txs']])
         super().__init__(*args, **kwargs)
+        self._gen_txs_bytes()
         self._set_tx_sender()
-        self.coinbase = False
+
+
+    def _gen_txs_bytes(self):
+        self.txs_bytes = b''.join([tx.to_bytes() for tx in self.txs])
 
     def _set_tx_sender(self):
         for tx in self.txs:
-            tx.sender = self.sender
+            tx.sender = self.signature.pubkey_x
 
     def to_bytes(self):
         return b''.join([
-            self.txs_bytes
+            self.txs_bytes,
+            self.signature.to_bytes(),
         ])
 
     def get_hash(self):
         return global_hash(self.to_bytes())
 
     def sign(self, secret_exponent):
-        privkey = ecdsa.SigningKey.from_secret_exponent(secret_exponent, curve=ecdsa.SECP256k1)
-        signature = privkey.sign(self.txs_bytes)
-        return SignedSuperTx(sender=self.sender, txs=self.txs, signature=signature)
+        # shouldn't need to self._gen_txs_bytes() here
+        self.signature.sign(secret_exponent, int.from_bytes(self.txs_bytes, 'big'))
+        self._set_tx_sender()
 
     def assert_internal_consistency(self):
-        print("Should never get called, this is what check() is for")
-        self.check([])
-
-
-class SignedSuperTx(SuperTx):
-    signature = Bytes.Definition()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def check(self, changed_attributes):
-        super().check(changed_attributes)
-        ecdsa_sender = self.sender._ecdsa_point()
-        try:
-            pubkey = ecdsa.VerifyingKey.from_public_point(ecdsa_sender, curve=ecdsa.SECP256k1)
-            pubkey.verify(self.signature, self.txs_bytes)
-        except ecdsa.keys.BadSignatureError:
-            raise ValidationError("Invalid Signature")
-
-    def sign(secret_exponent):
-        raise Exception("This transaction is already signed.")
-
-    def to_bytes(self):
-        return b''.join([
-            self.txs_bytes,
-            self.signature
-        ])
+        '''Should ensure signature is valid, nonce is valid, and each tx is valid
+        '''
+        for tx in self.txs:
+            tx.assert_internal_consistency()
+        self.signature.assert_valid_signature(int.from_bytes(self.txs_bytes, 'big'))
+        old_txs_bytes = self.txs_bytes
+        self._gen_txs_bytes()
+        assert old_txs_bytes == self.txs_bytes
 
     @classmethod
     def create_coinbase(cls, pay_to, max_value):
-        stx = SuperTx(txs=[Tx(dapp=b'', value=max_value, fee=0, donation=0, data=[pay_to])])
-        signed_stx = stx.sign(0x1)
-        signed_stx.coinbase = True
-        return signed_stx
+        stx = SuperTx(txs=[Tx(dapp=b'', value=max_value, fee=0, donation=0, data=[pay_to])], signature=Signature())
+        stx.sign(0x1)
+        stx.coinbase = True
+        return stx
 
 
 class Header(Encodium):
@@ -347,6 +332,7 @@ class Block(Encodium):
         self.state_maker = None
         self.super_state = None
         self.coinbase_set = False
+        self.update_roots(update_state_mr=False)
 
     def __eq__(self, other):
         if isinstance(other, Block) and other.get_hash() == self.get_hash():
@@ -402,16 +388,16 @@ class Block(Encodium):
         * self.header.transaction_mr equals merkle root of self.super_txs
         * self.header.uncles_mr equals merkle root of self.uncles
         '''
-        for uncle in self.uncles:
-            uncle.assert_internal_consistency()
-        for super_tx in self.super_txs:
-            super_tx.assert_internal_consistency()
-        self.assert_true(self.header.transaction_mr == MerkleLeavesToRoot(
-            leaves=[i.get_hash() for i in self.super_txs]).get_hash(), 'TxMR consistency')
-        self.assert_true(
-            self.header.uncles_mr == MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.uncles]).get_hash(),
-            'UnclesMR consistency')
         try:
+            for uncle in self.uncles:
+                uncle.assert_internal_consistency()
+            for super_tx in self.super_txs:
+                super_tx.assert_internal_consistency()
+            self.assert_true(self.header.transaction_mr == MerkleLeavesToRoot(
+                leaves=[i.get_hash() for i in self.super_txs]).get_hash(), 'TxMR consistency')
+            self.assert_true(
+                self.header.uncles_mr == MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.uncles]).get_hash(),
+                'UnclesMR consistency')
             self.header.assert_internal_consistency()
         except:
             import pdb; pdb.set_trace()
@@ -422,7 +408,10 @@ class Block(Encodium):
         '''
         self.assert_internal_consistency()
         self.header.assert_validity(chain)
+        if self.state_maker is None:
+            self._set_state_maker(chain.head.state_maker)
         if chain.initialized:
+            debug(self)
             self.assert_true(chain.has_block_hash(self.parent_hash), 'Parent must be known')
             self.assert_true(chain.get_block(self.parent_hash).height + 1 == self.height, 'Height requirement')
             self.assert_true(self.super_state.get_hash() == self.header.state_mr, 'State root must match expected')
@@ -468,7 +457,7 @@ class Block(Encodium):
         debug('Block.on_genesis called')
         assert isinstance(chain, cryptonet.Chain)
         assert not chain.initialized
-        self._set_state_maker(StateMaker(chain, super_tx_class=SignedSuperTx))
+        self._set_state_maker(StateMaker(chain, super_tx_class=SuperTx))
 
     def _set_state_maker(self, state_maker):
         assert isinstance(state_maker, StateMaker)
@@ -479,11 +468,13 @@ class Block(Encodium):
     def additional_state_operations(self, state_maker):
         self.update_roots()
 
-    def update_roots(self):
+    def update_roots(self, update_state_mr=True, update_tx_mr=True):
         if self.height != 0:
             debug('UPDATE_ROOTS')
-            self.header.state_mr = self.state_maker.super_state.get_hash()
-            self.header.transaction_mr = MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.super_txs]).get_hash()
+            if update_state_mr:
+                self.header.state_mr = self.state_maker.super_state.get_hash()
+            if update_tx_mr:
+                self.header.transaction_mr = MerkleLeavesToRoot(leaves=[i.get_hash() for i in self.super_txs]).get_hash()
 
     def add_super_tx(self, super_tx):
         #assert self.state_maker.get_height() < self.height  # only add txs to future blocks
@@ -533,7 +524,7 @@ class RCPHandler:
         @rpc.add_method
         def push_tx(signed_super_tx):
             try:
-                super_tx = SignedSuperTx.from_obj(signed_super_tx)
+                super_tx = SuperTx.from_obj(signed_super_tx)
                 super_tx.assert_internal_consistency()
                 self.state_maker.apply_super_tx_to_future(super_tx)
                 chain.restart_miner()

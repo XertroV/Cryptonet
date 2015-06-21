@@ -297,7 +297,7 @@ class TxPrism(Dapp):
          * This makes it flexible for pools, as the pay-everyone transaction can be shown to exist
         '''
         # TODO implement correctly and sensibly
-        self.state[TxPrism.KNOWN_PUBKEY_X] += 50000  # or something
+        self.state[TxPrism.KNOWN_PUBKEY_X] += 50000 + block.height  # or something
         # Future example schedule
         # Gold rush period: geometric series adjusted regularly (daily, probably)
         # Constant block production: some amount produced constantly
@@ -314,9 +314,9 @@ class TxPrism(Dapp):
         self.assert_true(tx.donation >= 0, 'tx.donation must be greater than or equal to 0')
         debug('TxPrism.on_transaction', tx.sender, tx.value)
 
-        self.assert_true(self.state[tx.sender.x] >= tx.value + tx.fee + tx.donation, 'sender must have enough funds')
+        self.assert_true(self.state[tx.sender] >= tx.value + tx.fee + tx.donation, 'sender must have enough funds')
 
-        self.state[tx.sender.x] -= tx.value + tx.fee + tx.donation
+        self.state[tx.sender] -= tx.value + tx.fee + tx.donation
         self.state[TxPrism.KNOWN_PUBKEY_X] += tx.fee
         self.state[TxPrism.EUDEMONIA_PUBKEY_X] += tx.donation
 
@@ -343,5 +343,5 @@ class TxTracker(Dapp):
     def on_transaction(self, super_tx, block, chain):
         self.assert_true(self.state[super_tx.get_hash()] == 0, 'SuperTx must not have been used previously')
         self.state[super_tx.get_hash()] = block.height
-        debug('TxTracker: state[txhash]', self.state[super_tx.get_hash()], block, super_tx)
+        debug('TxTracker: state[txhash]', self.state[super_tx.get_hash()], super_tx.get_hash(), super_tx)
 
